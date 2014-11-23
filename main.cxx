@@ -1,19 +1,24 @@
 /* MIKOEDGEN
  *
  * Mikola Samardak's Edit Script Generator, implemented as a dare,
- * using Myers's algorithm.
+ * using Myers's algorithm from
+ * „An O(ND) Difference Algorithm and Its Variations“.
  *
  * Currently suits better for binary, mostly because output can
  * hardly be considered human-readable.
  * Output script consists of sequence of instructions and raw data
  * to be inserted or deleted.
  * Format:
- *   @a,b: - jump to offsets a, b at first and second string respectively.
+ *   @a,b: - jump to offsets a, b for first and second string respectively.
  *   +c:A - insert array A of length c.
  *   -c:A - delete array A of length c.
  *
- * TODO: it woold be cool and more convenient to represent a and b positions
+ * TODO: compact together sequences of hunks with the same operation.
+ *
+ * TODO: it would be cool and more convenient to represent a and b positions
  *       as a 2-dimensional points instead of separate values.
+ *
+ * TODO: incorporate optimizations described in part 4 of the paper.
  */
 
 #include <algorithm>
