@@ -19,7 +19,7 @@
  *       should be reimplemented as an external function, which would
  *       be able to discard "@" instruction when hunks are sequential,
  *       to generate
- *           @0,9+ABC-BA
+ *           @0,2+ABC-BA
  *       instead of
  *           @0,2+ABC
  *           @3,5-BA
