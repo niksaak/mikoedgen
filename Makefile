@@ -5,8 +5,6 @@ ifeq ($(CXX), clang++)
 CFLAGS+=-stdlib=libc++
 endif
 
-$(info $(CXX))
-
 LDFLAGS+=
 ifeq ($(CXX), clang++)
 LDFLAGS+=-lc++ -lc++abi -lm -lc -lgcc_s -lgcc
@@ -14,6 +12,10 @@ endif
 
 .PHONY: all
 all: mikoedgen
+
+.PHONY: valgrind
+valgrind:
+	valgrind ./mikoedgen
 
 mikoedgen: main.o
 	$(CXX) -o $@ $+ $(LDFLAGS)
