@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <fstream>
 #include <iostream>
 #include <unordered_map>
 #include <vector>
@@ -33,20 +34,13 @@ enum DiffOp {
 	DIFF_NOP,
 };
 
-struct Hunk {
-	int apos;
-	int bpos;
-	DiffOp op;
-	int length;
-};
-
 struct Snake {
 	int astart, bstart;
 	int amid, bmid;
 	int aend, bend;
 
 	bool is_valid() const {
-		return     (astart <= amid && bstart <= bmid)
+		return	(astart <= amid && bstart <= bmid)
 			&& ((aend - amid) == (bend - bmid));
 	}
 
@@ -65,50 +59,32 @@ struct Snake {
 	}
 };
 
-static
-std::ostream& operator << (std::ostream& s, const Snake& snake) {
-	s << "Snake{";
-	s << std::to_string(snake.astart) + ",";
-	s << std::to_string(snake.bstart) + ",";
-	s << std::to_string(snake.amid) + ",";
-	s << std::to_string(snake.bmid) + ",";
-	s << std::to_string(snake.aend) + ",";
-	s << std::to_string(snake.bend);
-	s << "}";
-	return s;
-}
+struct Hunk {
+	int apos;
+	int bpos;
+	DiffOp op;
+	int length;
+	std::string data;
 
-static
-std::vector<Hunk> process_snakes(std::vector<Snake> snakes) {
-	std::vector<Hunk> hunks;
-	Hunk hunk;
-	for (auto snake = snakes.cbegin(); snake != snakes.cend(); snake--) {
-		if (snake->bstart == -1) {
-			continue;
-		}
+	std::string marshall() const {
+		std::string s;
+		s += "@" + std::to_string(apos) + "," + std::to_string(bpos) + ":";
 
-		DiffOp op = snake->diff_op();
-		if (op == DIFF_NOP) {
-			continue;
-		}
-
-		if (op == hunk.op && !snake->has_diagonal()) {
-			hunk.apos = snake->astart;
-			hunk.bpos = snake->bstart;
-			hunk.length++;
+		if (op == DIFF_INSERT) {
+			s += "+";
+		} else if (op == DIFF_DELETE) {
+			s += "-";
 		} else {
-			hunks.push_back(hunk);
-			hunk = Hunk{
-				snake->astart,
-				snake->bstart,
-				op,
-				1,
-			};
+			throw std::logic_error("Bad DiffOp");
 		}
+
+		s += std::to_string(length);
+		s += ":";
+		s += data;
+
+		return std::move(s);
 	}
-	std::reverse(hunks.begin(), hunks.end());
-	return std::move(hunks);
-}
+};
 
 static
 std::vector<std::unordered_map<int,int>> compute_trace(std::string a, std::string b) {
@@ -149,55 +125,15 @@ std::vector<std::unordered_map<int,int>> compute_trace(std::string a, std::strin
 }
 
 static
-std::vector<Hunk> compute_hunks(std::string a, std::string b) {
-	const int alen = a.size();
-	const int blen = b.size();
-
-	std::vector<std::unordered_map<int,int>> vs;
-
-	// find shortest D-path
-	std::unordered_map<int,int> v;
-	v[1] = 0;
-	for (int d = 0; d <= alen + blen; d++) {
-		bool solved = false;
-		std::cout << "d: " << d << "\n";
-		for (int k = -d; k <= d; k += 2) {
-			int apos;
-			int bpos;
-			if (k == -d || (k != d && v[k-1] < v[k+1])) {
-				apos = v[k+1];
-			} else {
-				apos = v[k-1]+1;
-			}
-			bpos = apos - k;
-			while (apos < alen && bpos < blen && a[apos] == b[bpos]) {
-				apos++;
-				bpos++;
-			}
-			v[k] = apos;
-			std::cout << "v[" << k << "] = (" << apos << "," << bpos << ")\n";
-			if (apos >= alen && bpos >= blen) {
-				std::cout << "found solution of length " << d << "\n";
-				solved = true;
-				break;
-			}
-		}
-		vs.push_back(std::unordered_map<int,int>(v));
-
-		if (solved) {
-			break;
-		}
-	}
-
-	// calculate snakes starting at the last endpoint
+std::vector<Snake> compute_snakes(
+		const std::vector<std::unordered_map<int,int>> vs,
+		const int alen, const int blen
+) {
 	std::vector<Snake> snakes;
 	int apos = alen;
 	int bpos = blen;
 	for (int d = vs.size() - 1; apos > 0 || bpos > 0; d--) {
 		auto v = vs[d];
-
-		std::cout << "d: " << d << "\n";
-		std::cout << "pos: (" << apos << "," << bpos << ")\n";
 
 		int k = apos - bpos;
 
@@ -222,17 +158,89 @@ std::vector<Hunk> compute_hunks(std::string a, std::string b) {
 		apos = astart;
 		bpos = bstart;
 	}
-
-	return process_snakes(snakes);
+	return std::move(snakes);
 }
 
-int main(void) {
-	std::string a = "CABCABBA";
-	std::string b = "CBABACA";
-	auto snakes = compute_snakes(a, b);
-	std::cout << "\nSnakes:\n";
-	for (auto snake = snakes.begin(); snake != snakes.end(); ++snake) {
-		std::cout << *snake << "\n";
+static
+std::vector<Hunk> process_snakes(std::vector<Snake> snakes) {
+	std::vector<Hunk> hunks;
+	Hunk hunk = {};
+	for (auto snake = snakes.cbegin(); snake != snakes.cend(); snake++) {
+		if (snake->bstart == -1) {
+			continue;
+		}
+
+		DiffOp op = snake->diff_op();
+		if (op == DIFF_NOP) {
+			continue;
+		}
+
+		// TODO: merge sequences of hunks with the same op.
+		hunk = Hunk {
+			snake->astart,
+			snake->bstart,
+			op,
+			1,
+		};
+		hunks.push_back(hunk);
+	}
+	std::reverse(hunks.begin(), hunks.end());
+	return std::move(hunks);
+}
+
+static
+std::vector<Hunk> compute_hunks(std::string a, std::string b) {
+	const int alen = a.size();
+	const int blen = b.size();
+
+	std::vector<std::unordered_map<int,int>> vs = compute_trace(a, b);
+
+	std::vector<Snake> snakes = compute_snakes(vs, alen, blen);
+
+	std::vector<Hunk> hunks = process_snakes(snakes);
+
+	// а потім маленьке звірятко загортає все це у фольгу
+	for (auto hunk = hunks.begin(); hunk != hunks.end(); hunk++) {
+		if (hunk->op == DIFF_INSERT) {
+			hunk->data = b.substr(hunk->bpos, hunk->length);
+		} else {
+			hunk->data = a.substr(hunk->apos, hunk->length);
+		}
+	}
+
+	return std::move(hunks);
+}
+
+int main(int argc, char* argv[]) {
+	if (argc != 3) {
+		std::cout << "Usage:\n";
+		std::cout << "  " << argv[0] << " <file1> <file2>";
+		return -1;
+	}
+
+	std::ifstream file1;
+	file1.exceptions(std::ifstream::failbit);
+	file1.open(argv[1], std::ifstream::in | std::ifstream::binary);
+	std::ifstream file2;
+	file2.exceptions(std::ifstream::failbit);
+	file2.open(argv[2], std::ifstream::in | std::ifstream::binary);
+
+	std::string a(
+			(std::istreambuf_iterator<char>(file1)),
+			(std::istreambuf_iterator<char>())
+	);
+	std::string b(
+			(std::istreambuf_iterator<char>(file2)),
+			(std::istreambuf_iterator<char>())
+	);
+
+	std::cout << "-" << a;
+	std::cout << "+" << b;
+
+	auto hunks = compute_hunks(a, b);
+	std::cout << "\nHunks:\n";
+	for (auto hunk = hunks.cbegin(); hunk != hunks.cend(); ++hunk) {
+		std::cout << hunk->marshall() << "\n";
 	}
 }
 
