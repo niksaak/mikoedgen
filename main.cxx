@@ -15,6 +15,20 @@
  *
  * TODO: compact together sequences of hunks with the same operation.
  *
+ * TODO: as an extention of the previous todo, Hunk::marshall() method
+ *       should be reimplemented as an external function, which would
+ *       be able to discard "@" instruction when hunks are sequential,
+ *       to generate
+ *           @0,9+ABC-BA
+ *       instead of
+ *           @0,2+ABC
+ *           @3,5-BA
+ *
+ * TODO: documentation (!). I heard it takes a month for an ordinary human to
+ *       fully understand the paper, so it will be useful to have.
+ *
+ * TODO: command line flags. For reading input from stdin and such.
+ *
  * TODO: it would be cool and more convenient to represent a and b positions
  *       as a 2-dimensional points instead of separate values.
  *
@@ -66,6 +80,8 @@ struct Hunk {
 	int length;
 	std::string data;
 
+	// TODO: reimplement as external function processing the hunk in a
+	//       context of other hunks.
 	std::string marshall() const {
 		std::string s;
 		s += "@" + std::to_string(apos) + "," + std::to_string(bpos) + ":";
