@@ -192,11 +192,8 @@ std::vector<Hunk> process_snakes(std::vector<Snake> snakes) {
 	};
 	snake++;
 	do {
-		if (snake->bstart == -1) {
-			// When the beginning and the end of the file are equal.
-			break;
-		}
-		if (snake->diff_op() == DIFF_NOP) {
+		if (snake->diff_op() == DIFF_NOP || snake->bstart == -1) {
+			snake++;
 			continue;
 		}
 
