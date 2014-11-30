@@ -13,8 +13,6 @@
  *   +c:A - insert array A of length c.
  *   -c:A - delete array A of length c.
  *
- * TODO: compact together sequences of hunks with the same operation.
- *
  * TODO: as an extention of the previous todo, Hunk::marshall() method
  *       should be reimplemented as an external function, which would
  *       be able to discard "@" instruction when hunks are sequential,
@@ -180,26 +178,41 @@ std::vector<Snake> compute_snakes(
 static
 std::vector<Hunk> process_snakes(std::vector<Snake> snakes) {
 	std::vector<Hunk> hunks;
-	Hunk hunk = {};
-	for (auto snake = snakes.cbegin(); snake != snakes.cend(); snake++) {
-		if (snake->bstart == -1) {
-			continue;
-		}
 
-		DiffOp op = snake->diff_op();
-		if (op == DIFF_NOP) {
-			continue;
-		}
-
-		// TODO: merge sequences of hunks with the same op.
-		hunk = Hunk {
-			snake->astart,
-			snake->bstart,
-			op,
-			1,
-		};
-		hunks.push_back(hunk);
+	// TODO: this will look better as a for loop, I think.
+	auto snake = snakes.cbegin();
+	while (snake->diff_op() == DIFF_NOP || snake->bstart == -1) {
+		snake++;
 	}
+	Hunk hunk = {
+		snake->astart,
+		snake->bstart,
+		snake->diff_op(),
+		1,
+	};
+	snake++;
+	do {
+		if (snake->bstart == -1) {
+			// When the beginning and the end of the file are equal.
+			break;
+		}
+		if (snake->diff_op() == DIFF_NOP) {
+			continue;
+		}
+
+		if (hunk.op == DIFF_NOP || snake->diff_op() != hunk.op) {
+			hunks.push_back(hunk);
+			hunk.length = 0;
+			hunk.op = snake->diff_op();
+		}
+		hunk.apos = snake->astart;
+		hunk.bpos = snake->bstart;
+		hunk.length++;
+
+		snake++;
+	} while(snake != snakes.cend());
+	hunks.push_back(hunk);
+
 	std::reverse(hunks.begin(), hunks.end());
 	return std::move(hunks);
 }
